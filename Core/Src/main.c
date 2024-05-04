@@ -95,7 +95,7 @@ float duty_cycle = 50;
 //--------------Trajectory-------------------//
 //Define
 float q_d_i = 0;
-float q_d_max = 650; //Maximum velocity
+float q_d_max = 570; //Maximum velocity
 float q_2d_max = 630; //Maximum acc
 //init
 float q_f = 0;
@@ -134,6 +134,8 @@ float max_velo = 0;
 //Sensor
 int S_top = 0;
 int S_down = 0;
+
+int check = 0;
 
 /* USER CODE END PV */
 
@@ -217,9 +219,9 @@ int main(void)
   HAL_TIM_Base_Start(&htim4);
 
   //PID Control Position
-  PID1.Kp = 2; //No more than 0.92
-  PID1.Ki = 0.000017;
-  PID1.Kd = 50;
+  PID1.Kp = 5; //No more than 0.92
+  PID1.Ki = 0.00002;
+  PID1.Kd = 1;
   arm_pid_init_f32(&PID1, 0);
 
   //PID Control Velocity
@@ -260,8 +262,21 @@ int main(void)
 		  createTrajectory();
 
 		  if(mode == 1){
-			  Vin = arm_pid_f32(&PID2, (setVelocity + ref_v)/2 - QEIdata.linearVel);
-			  //Vin = arm_pid_f32(&PID2, ref_v - QEIdata.linearVel);
+			  if(fabs(setPosition - QEIdata.linearPos) < 0.05){
+				  Vin = 0;
+			  }
+			  else if(setPosition - QEIdata.linearPos < 3 && setPosition - QEIdata.linearPos > 0.05){
+				  Vin = 2;
+				  check = 1;
+			  }
+			  else if(setPosition - QEIdata.linearPos > -3 && setPosition - QEIdata.linearPos < -0.05){
+			  	  Vin = -1.5;
+			  	  check = -1;
+			  }
+			  else{
+				  Vin = arm_pid_f32(&PID2, (setVelocity + ref_v)/2 - QEIdata.linearVel);
+				  //Vin = arm_pid_f32(&PID2, ref_v - QEIdata.linearVel);
+			  }
 			  if(Vin > 24){
 	  			  Vin = 24;
 			  }
@@ -292,9 +307,22 @@ int main(void)
 
 		  //control mode
 		  if(mode == 1){ //auto
-			  setVelocity = arm_pid_f32(&PID1, (setPosition + ref_p)/2 - QEIdata.linearPos);
-			  Vin = arm_pid_f32(&PID2, (setVelocity + ref_v)/2 + QEIdata.linearVel);
-			  //Vin = arm_pid_f32(&PID2, ref_v - QEIdata.linearVel);
+			  if(fabs(setPosition - QEIdata.linearPos) < 0.05){
+				  Vin = 0;
+			  }
+			  else if(setPosition - QEIdata.linearPos < 3 && setPosition - QEIdata.linearPos > 0.05){
+			  	  Vin = 2;
+			  	  check = 2;
+			  }
+			  else if(setPosition - QEIdata.linearPos > -3 && setPosition - QEIdata.linearPos < -0.05){
+			  	  Vin = -1.5;
+			  	  check = -2;
+			  }
+			  else{
+				  setVelocity = arm_pid_f32(&PID1, (setPosition + ref_p)/2 - QEIdata.linearPos);
+				  Vin = arm_pid_f32(&PID2, (setVelocity + ref_v)/2 + QEIdata.linearVel);
+				  //Vin = arm_pid_f32(&PID2, ref_v - QEIdata.linearVel);
+			  }
 			  if(Vin > 24){
 				  Vin = 24;
 			  }
