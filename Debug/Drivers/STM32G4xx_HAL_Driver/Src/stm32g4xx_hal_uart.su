@@ -5,6 +5,10 @@
 ../Drivers/STM32G4xx_HAL_Driver/Src/stm32g4xx_hal_uart.c:632:19:HAL_UART_DeInit	16	static
 ../Drivers/STM32G4xx_HAL_Driver/Src/stm32g4xx_hal_uart.c:679:13:HAL_UART_MspInit	16	static
 ../Drivers/STM32G4xx_HAL_Driver/Src/stm32g4xx_hal_uart.c:694:13:HAL_UART_MspDeInit	16	static
+../Drivers/STM32G4xx_HAL_Driver/Src/stm32g4xx_hal_uart.c:730:19:HAL_UART_RegisterCallback	32	static
+../Drivers/STM32G4xx_HAL_Driver/Src/stm32g4xx_hal_uart.c:858:19:HAL_UART_UnRegisterCallback	24	static
+../Drivers/STM32G4xx_HAL_Driver/Src/stm32g4xx_hal_uart.c:963:19:HAL_UART_RegisterRxEventCallback	24	static
+../Drivers/STM32G4xx_HAL_Driver/Src/stm32g4xx_hal_uart.c:994:19:HAL_UART_UnRegisterRxEventCallback	24	static
 ../Drivers/STM32G4xx_HAL_Driver/Src/stm32g4xx_hal_uart.c:1117:19:HAL_UART_Transmit	48	static
 ../Drivers/STM32G4xx_HAL_Driver/Src/stm32g4xx_hal_uart.c:1207:19:HAL_UART_Receive	48	static
 ../Drivers/STM32G4xx_HAL_Driver/Src/stm32g4xx_hal_uart.c:1291:19:HAL_UART_Transmit_IT	72	static,ignoring_inline_asm
@@ -41,6 +45,7 @@
 ../Drivers/STM32G4xx_HAL_Driver/Src/stm32g4xx_hal_uart.c:2897:19:HAL_LIN_SendBreak	16	static
 ../Drivers/STM32G4xx_HAL_Driver/Src/stm32g4xx_hal_uart.c:2942:23:HAL_UART_GetState	24	static
 ../Drivers/STM32G4xx_HAL_Driver/Src/stm32g4xx_hal_uart.c:2958:10:HAL_UART_GetError	16	static
+../Drivers/STM32G4xx_HAL_Driver/Src/stm32g4xx_hal_uart.c:2980:6:UART_InitCallbacksToDefault	16	static
 ../Drivers/STM32G4xx_HAL_Driver/Src/stm32g4xx_hal_uart.c:3004:19:UART_SetConfig	80	static
 ../Drivers/STM32G4xx_HAL_Driver/Src/stm32g4xx_hal_uart.c:3221:6:UART_AdvFeatureConfig	16	static
 ../Drivers/STM32G4xx_HAL_Driver/Src/stm32g4xx_hal_uart.c:3295:19:UART_CheckIdleState	104	static,ignoring_inline_asm
