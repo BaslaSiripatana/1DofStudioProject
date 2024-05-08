@@ -10,14 +10,14 @@
 ../Core/Src/main.c:837:13:MX_USART2_UART_Init	5
 ../Core/Src/main.c:883:13:MX_DMA_Init	1
 ../Core/Src/main.c:909:13:MX_GPIO_Init	1
-../Core/Src/main.c:1016:6:HAL_TIM_PeriodElapsedCallback	3
+../Core/Src/main.c:1016:6:HAL_TIM_PeriodElapsedCallback	2
 ../Core/Src/main.c:1031:10:micros	1
 ../Core/Src/main.c:1036:6:QEIEncoderPosVel_Update	3
-../Core/Src/main.c:1075:6:HAL_GPIO_EXTI_Callback	7
+../Core/Src/main.c:1075:6:HAL_GPIO_EXTI_Callback	5
 ../Core/Src/main.c:1105:6:checkStartMoving	4
 ../Core/Src/main.c:1138:6:createTrajectory	14
 ../Core/Src/main.c:1185:6:DriveMotor	2
-../Core/Src/main.c:1199:6:SoftwareLimit	9
+../Core/Src/main.c:1199:6:SoftwareLimit	13
 ../Core/Src/main.c:1219:6:JoystickInput	1
 ../Core/Src/main.c:1227:6:button_up_down_input	7
 ../Core/Src/main.c:1261:6:button_reset_input	6

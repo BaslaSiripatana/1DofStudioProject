@@ -286,13 +286,13 @@ int main(void)
   HAL_TIM_Base_Start(&htim4);
 
   //PID Control Position
-  PID1.Kp = 5; //No more than 0.92
+  PID1.Kp = 5;
   PID1.Ki = 0.00002;
   PID1.Kd = 1;
   arm_pid_init_f32(&PID1, 0);
 
   //PID Control Velocity
-  PID2.Kp = 0.15;  //No more than 0.044
+  PID2.Kp = 0.15;
   PID2.Ki = 0.006;
   PID2.Kd = 0.05;
   arm_pid_init_f32(&PID2, 0);
@@ -319,13 +319,13 @@ int main(void)
     /* USER CODE BEGIN 3 */
 
 	  //------Modbus Function------//
-	  Modbus_Protocal_Worker();
-	  check_vaccum_status();
-	  check_gripper_status();
-	  set_shelf();
-	  Pointmode();
-	  Home();
-	  Run_jog();
+//	  Modbus_Protocal_Worker();
+//	  check_vaccum_status();
+//	  check_gripper_status();
+//	  set_shelf();
+//	  Pointmode();
+//	  Home();
+//	  Run_jog();
 
 	  static uint64_t timestamp = 0;
 	  static uint64_t timestamp2 = 0;
@@ -1020,12 +1020,12 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 		_micros += UINT32_MAX;
 	}
 	// Check which version of the timer triggered this callback and toggle LED
-	if (htim == &htim6)
-	{
-	    check2 +=1;
-		Heartbeat();
-		Routine();
-	}
+//	if (htim == &htim6)
+//	{
+//	    check2 +=1;
+//		Heartbeat();
+//		Routine();
+//	}
 }
 
 uint64_t micros()
@@ -1082,12 +1082,12 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 			mode = 1;
 		}
 
-		if(mode == 1){
-			HAL_GPIO_WritePin(GPIOA, GPIO_PIN_6, 1);
-		}
-		else if(mode == 2){
-			HAL_GPIO_WritePin(GPIOA, GPIO_PIN_6, 0);
-		}
+//		if(mode == 1){
+//			HAL_GPIO_WritePin(GPIOA, GPIO_PIN_6, 1);
+//		}
+//		else if(mode == 2){
+//			HAL_GPIO_WritePin(GPIOA, GPIO_PIN_6, 0);
+//		}
 	}
 	if(GPIO_Pin == GPIO_PIN_8){ //check top sensor
 		S_top = 1;
@@ -1197,17 +1197,17 @@ void DriveMotor(){
 }
 
 void SoftwareLimit(){
-	if(S_top == 1 && Vin >= -2){
+	if((S_top == 1 || QEIdata.linearPos>580) && Vin >= -2){
 		Vin = 0;
 	}
-	else if(S_top == 1 && Vin < -2){
+	else if((S_top == 1 || QEIdata.linearPos>580) && Vin < -2){
 		S_top = 0;
 	}
 
-	if(S_down == 1 && Vin <= 2){
+	if((S_down == 1 || QEIdata.linearPos<-5) && Vin <= 2){
 		Vin = 0;
 	}
-	else if(S_down == 1 && Vin > 2){
+	else if((S_down == 1 || QEIdata.linearPos<-5) && Vin > 2){
 		S_down = 0;
 	}
 
