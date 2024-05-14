@@ -104,7 +104,7 @@ float duty_cycle = 50;
 //Define
 float q_d_i = 0;
 float q_d_max = 570; //Maximum velocity
-float q_2d_max = 630; //Maximum acc
+float q_2d_max = 600; //Maximum acc
 //init
 float q_f = 0;
 float q_i = 0;
@@ -149,6 +149,7 @@ float max_velo = 0;
 int S_top = 0;
 int S_down = 0;
 
+int check_state_B= 0;
 //------------------MODBUS-----------------------//
 ModbusHandleTypedef hmodbus;
 u16u8_t registerFrame[200];
@@ -286,15 +287,15 @@ int main(void)
   HAL_TIM_Base_Start(&htim4);
 
   //PID Control Position
-  PID1.Kp = 5;
-  PID1.Ki = 0.00002;
-  PID1.Kd = 1;
+  PID1.Kp = 7.5; // 7.5
+  PID1.Ki = 0.00005; // 0.0025
+  PID1.Kd = 3; // 3
   arm_pid_init_f32(&PID1, 0);
 
   //PID Control Velocity
-  PID2.Kp = 0.15;
-  PID2.Ki = 0.006;
-  PID2.Kd = 0.05;
+  PID2.Kp = 0.1; //0.5
+  PID2.Ki = 0.0006; // 0.006
+  PID2.Kd = 0.025; // 0.05
   arm_pid_init_f32(&PID2, 0);
 
   //Modbus Setting
@@ -347,20 +348,20 @@ int main(void)
 		  createTrajectory();
 
 		  if(mode == 1){
-			  if(fabs(setPosition - QEIdata.linearPos) < 0.05){
+			  if(fabs(setPosition - QEIdata.linearPos) < 0.1){
 				  Vin = 0;
 			  }
-			  else if(setPosition - QEIdata.linearPos < 3 && setPosition - QEIdata.linearPos > 0.05){
-				  Vin = 2;
+			  else if(setPosition - QEIdata.linearPos < 3 && setPosition - QEIdata.linearPos > 0.1){
+				  Vin = 3.2;
 				  check = 1;
 			  }
-			  else if(setPosition - QEIdata.linearPos > -3 && setPosition - QEIdata.linearPos < -0.05){
-			  	  Vin = -1.5;
+			  else if(setPosition - QEIdata.linearPos > -3 && setPosition - QEIdata.linearPos < -0.1){
+			  	  Vin = -2;
 			  	  check = -1;
 			  }
 			  else{
 				  Vin = arm_pid_f32(&PID2, (setVelocity + ref_v)/2 - QEIdata.linearVel);
-				  //Vin = arm_pid_f32(&PID2, ref_v - QEIdata.linearVel);
+//				  Vin = arm_pid_f32(&PID2, ref_v - QEIdata.linearVel);
 			  }
 			  if(Vin > 24){
 	  			  Vin = 24;
@@ -370,7 +371,7 @@ int main(void)
 			  }
 		  }
 	      else if(mode == 2){ //manual (control with joy stick)
-			  JoystickInput();
+//			  JoystickInput();
 			  button_up_down_input();
 			  button_reset_input(); //set 0;
 			  button_save_position();
@@ -392,21 +393,21 @@ int main(void)
 
 		  //control mode
 		  if(mode == 1){ //auto
-			  if(fabs(setPosition - QEIdata.linearPos) < 0.05){
+			  if(fabs(setPosition - QEIdata.linearPos) < 0.1){
 				  Vin = 0;
 			  }
-			  else if(setPosition - QEIdata.linearPos < 3 && setPosition - QEIdata.linearPos > 0.05){
-			  	  Vin = 2;
+			  else if(setPosition - QEIdata.linearPos < 3 && setPosition - QEIdata.linearPos > 0.1){
+			  	  Vin = 3.2;
 			  	  check = 2;
 			  }
-			  else if(setPosition - QEIdata.linearPos > -3 && setPosition - QEIdata.linearPos < -0.05){
-			  	  Vin = -1.5;
+			  else if(setPosition - QEIdata.linearPos > -3 && setPosition - QEIdata.linearPos < -0.1){
+			  	  Vin = -2;
 			  	  check = -2;
 			  }
 			  else{
 				  setVelocity = arm_pid_f32(&PID1, (setPosition + ref_p)/2 - QEIdata.linearPos);
 				  Vin = arm_pid_f32(&PID2, (setVelocity + ref_v)/2 + QEIdata.linearVel);
-				  //Vin = arm_pid_f32(&PID2, ref_v - QEIdata.linearVel);
+//				  Vin = arm_pid_f32(&PID2, ref_v - QEIdata.linearVel);
 			  }
 			  if(Vin > 24){
 				  Vin = 24;
@@ -923,14 +924,13 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_WritePin(GPIOC, GPIO_PIN_14|GPIO_PIN_4|GPIO_PIN_5|GPIO_PIN_7, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOA, LD2_Pin|GPIO_PIN_6|GPIO_PIN_7|GPIO_PIN_8
-                          |GPIO_PIN_9, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOA, LD2_Pin|GPIO_PIN_6|GPIO_PIN_7|GPIO_PIN_8, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOB, GPIO_PIN_10|GPIO_PIN_6, GPIO_PIN_RESET);
 
-  /*Configure GPIO pin : PC13 */
-  GPIO_InitStruct.Pin = GPIO_PIN_13;
+  /*Configure GPIO pins : PC13 PC9 */
+  GPIO_InitStruct.Pin = GPIO_PIN_13|GPIO_PIN_9;
   GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
@@ -942,10 +942,8 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : LD2_Pin PA6 PA7 PA8
-                           PA9 */
-  GPIO_InitStruct.Pin = LD2_Pin|GPIO_PIN_6|GPIO_PIN_7|GPIO_PIN_8
-                          |GPIO_PIN_9;
+  /*Configure GPIO pins : LD2_Pin PA6 PA7 PA8 */
+  GPIO_InitStruct.Pin = LD2_Pin|GPIO_PIN_6|GPIO_PIN_7|GPIO_PIN_8;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
@@ -994,8 +992,8 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_PULLDOWN;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : PB8 PB9 */
-  GPIO_InitStruct.Pin = GPIO_PIN_8|GPIO_PIN_9;
+  /*Configure GPIO pin : PB8 */
+  GPIO_InitStruct.Pin = GPIO_PIN_8;
   GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
@@ -1019,10 +1017,10 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 	{
 		_micros += UINT32_MAX;
 	}
-	// Check which version of the timer triggered this callback and toggle LED
+//	 Check which version of the timer triggered this callback and toggle LED
 //	if (htim == &htim6)
 //	{
-//	    check2 +=1;
+//	    //check2 +=1;
 //		Heartbeat();
 //		Routine();
 //	}
@@ -1074,13 +1072,13 @@ void QEIEncoderPosVel_Update()
 
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 {
-	if(GPIO_Pin == GPIO_PIN_10)  //change mode IT
-	{
-//		setPosition = 100;
-		mode += 1;
-		if(mode==4){
-			mode = 1;
-		}
+//	if(GPIO_Pin == GPIO_PIN_10)  //change mode IT
+//	{
+////		setPosition = 100;
+//		mode += 1;
+//		if(mode==4){
+//			mode = 1;
+//		}
 
 //		if(mode == 1){
 //			HAL_GPIO_WritePin(GPIOA, GPIO_PIN_6, 1);
@@ -1088,7 +1086,7 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 //		else if(mode == 2){
 //			HAL_GPIO_WritePin(GPIOA, GPIO_PIN_6, 0);
 //		}
-	}
+//	}
 	if(GPIO_Pin == GPIO_PIN_8){ //check top sensor
 		S_top = 1;
 		//Vin = -2;
@@ -1197,17 +1195,17 @@ void DriveMotor(){
 }
 
 void SoftwareLimit(){
-	if((S_top == 1 || QEIdata.linearPos>580) && Vin >= -2){
+	if(S_top == 1 && Vin >= -2){
 		Vin = 0;
 	}
-	else if((S_top == 1 || QEIdata.linearPos>580) && Vin < -2){
+	else if(S_top == 1 && Vin < -2){
 		S_top = 0;
 	}
 
-	if((S_down == 1 || QEIdata.linearPos<-5) && Vin <= 2){
+	if(S_down == 1 && Vin <= 2){
 		Vin = 0;
 	}
-	else if((S_down == 1 || QEIdata.linearPos<-5) && Vin > 2){
+	else if(S_down == 1 && Vin > 2){
 		S_down = 0;
 	}
 
@@ -1230,15 +1228,19 @@ void button_up_down_input(){
 		set_manual_point = QEIdata.linearPos + 10; //stem 10 mm
 		check_up = 1;
 		B_up = 1;
+		check_state_B = 1;
 	}
 	else{
 		B_up = 0;
+		check_state_B = 2;
 	}
 	if(QEIdata.linearPos < set_manual_point && check_up == 1){
 		Vin = 4.5;
+		check_state_B = 3;
 	}
 	else{
 		check_up = 0;
+		check_state_B = 4;
 	}
 
 	//check button down
@@ -1246,15 +1248,23 @@ void button_up_down_input(){
 		set_manual_point = QEIdata.linearPos - 10;
 		check_down = 1;
 		B_down = 1;
+		check_state_B = 5;
 	}
 	else{
 		B_down = 0;
+		check_state_B = 6;
 	}
 	if(QEIdata.linearPos > set_manual_point && check_down == 1){
 		Vin = -3.5;
+		check_state_B = 7;
 	}
 	else{
 		check_down = 0;
+		check_state_B = 8;
+	}
+
+	if(check_up == 0 && check_down == 0){
+		Vin = 0;
 	}
 }
 
@@ -1262,7 +1272,7 @@ void button_reset_input(){
 	//check button reset
 	if(HAL_GPIO_ReadPin(GPIOD, GPIO_PIN_2) == 1 || set_Home_state == 1){
 		B_reset = 1;
-		while(HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_9) == 0){
+		while(HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_9) == 0){
 			Vin = -3.5;
 			//software limit
 			SoftwareLimit();
@@ -1275,8 +1285,8 @@ void button_reset_input(){
 		DriveMotor();
 		HAL_Delay(500);
 
-		while(HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_9) == 0){
-			Vin = -1.1;
+		while(HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_9) == 0){
+			Vin = -2;
 			//software limit
 			SoftwareLimit();
 			//Drive Motor which PWM
@@ -1306,7 +1316,6 @@ void button_save_position(){
 }
 
 //-------------------------------------------------//
-
 //-------------------------MODBUS FUNCTIONS--------------------------//
 void Heartbeat(){
 	registerFrame[0x00].U16 = 22881;
