@@ -320,13 +320,13 @@ int main(void)
     /* USER CODE BEGIN 3 */
 
 	  //------Modbus Function------//
-//	  Modbus_Protocal_Worker();
-//	  check_vaccum_status();
-//	  check_gripper_status();
-//	  set_shelf();
-//	  Pointmode();
-//	  Home();
-//	  Run_jog();
+	  Modbus_Protocal_Worker();
+	  check_vaccum_status();
+	  check_gripper_status();
+	  set_shelf();
+	  Pointmode();
+	  Home();
+	  Run_jog();
 
 	  static uint64_t timestamp = 0;
 	  static uint64_t timestamp2 = 0;
@@ -336,6 +336,7 @@ int main(void)
 	  {
 		  max_velo = QEIdata.linearVel;
 	  }
+
 	  if(currentTime > timestamp2){
 		  timestamp2 = currentTime + 167; //6,000 Hz
 
@@ -371,7 +372,7 @@ int main(void)
 			  }
 		  }
 	      else if(mode == 2){ //manual (control with joy stick)
-//			  JoystickInput();
+			  JoystickInput();
 			  button_up_down_input();
 			  button_reset_input(); //set 0;
 			  button_save_position();
@@ -394,21 +395,22 @@ int main(void)
 		  //control mode
 		  if(mode == 1){ //auto
 			  if(fabs(setPosition - QEIdata.linearPos) < 0.1){
-				  Vin = 0;
+				  //Vin = 0;
 			  }
 			  else if(setPosition - QEIdata.linearPos < 3 && setPosition - QEIdata.linearPos > 0.1){
-			  	  Vin = 3.2;
-			  	  check = 2;
+			  	  //Vin = 3.2;
+			  	  //check = 2;
 			  }
 			  else if(setPosition - QEIdata.linearPos > -3 && setPosition - QEIdata.linearPos < -0.1){
-			  	  Vin = -2;
-			  	  check = -2;
+			  	  //Vin = -2;
+			  	  //check = -2;
 			  }
 			  else{
 				  setVelocity = arm_pid_f32(&PID1, (setPosition + ref_p)/2 - QEIdata.linearPos);
 				  Vin = arm_pid_f32(&PID2, (setVelocity + ref_v)/2 + QEIdata.linearVel);
 //				  Vin = arm_pid_f32(&PID2, ref_v - QEIdata.linearVel);
 			  }
+
 			  if(Vin > 24){
 				  Vin = 24;
 			  }
@@ -1018,12 +1020,12 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 		_micros += UINT32_MAX;
 	}
 //	 Check which version of the timer triggered this callback and toggle LED
-//	if (htim == &htim6)
-//	{
-//	    //check2 +=1;
-//		Heartbeat();
-//		Routine();
-//	}
+	if (htim == &htim6)
+	{
+	    //check2 +=1;
+		Heartbeat();
+		Routine();
+	}
 }
 
 uint64_t micros()
@@ -1074,7 +1076,6 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 {
 //	if(GPIO_Pin == GPIO_PIN_10)  //change mode IT
 //	{
-////		setPosition = 100;
 //		mode += 1;
 //		if(mode==4){
 //			mode = 1;
@@ -1217,6 +1218,9 @@ void SoftwareLimit(){
 void JoystickInput(){
 	//Control y-axis by joy
 	Vin = (float)(ADCBuffer[1]-1850)*24/2048; //0->24V
+	if(Vin > -3 && Vin < 3){
+		Vin = 0;
+	}
 
 	//Control x-axis by joy
 	x_position += ((ADCBuffer[0]-2048)*0.005);
@@ -1270,7 +1274,7 @@ void button_up_down_input(){
 
 void button_reset_input(){
 	//check button reset
-	if(HAL_GPIO_ReadPin(GPIOD, GPIO_PIN_2) == 1 || set_Home_state == 1){
+	if(HAL_GPIO_ReadPin(GPIOD, GPIO_PIN_2) == 1 || (Home_state_triger == 0 && set_Home_state == 1)){
 		B_reset = 1;
 		while(HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_9) == 0){
 			Vin = -3.5;
@@ -1295,8 +1299,9 @@ void button_reset_input(){
 		Vin = 0;
 		__HAL_TIM_SET_COUNTER(&htim2, 0); //set position to 0
 
-		if(set_Home_state == 1){
+		if(Home_state_triger == 0 && set_Home_state == 1){
 			Home_state_triger = 1;
+			B_reset = 0;
 		}
 	}
 	else{
@@ -1384,7 +1389,7 @@ void set_shelf()
 		set_shelf_state = 1;
 		LED_Manual();
 	}
-	if (set_shelf_state == 1 && Enter_click ==0)
+	if (set_shelf_state == 1 && Enter_click == 0)
 	{
 			registerFrame[0x01].U16 = 0b0000;
 			Moving_status = 1;
@@ -1393,6 +1398,7 @@ void set_shelf()
 			if(count_save == 5){
 				Enter_click = 1;
 				count_save = 0;
+				mode = 3;
 			}
 	}
 	if (set_shelf_state == 1 && Enter_click == 1)
@@ -1459,6 +1465,7 @@ void Home()
 	}
 	if(Home_state_triger == 1 && set_Home_state == 1)
 	{
+		mode = 3;
 		Moving_status = 0;
 		registerFrame[0x10].U16 = Moving_status;
 		set_Home_state = 0;
@@ -1471,6 +1478,7 @@ void Run_jog()
 	if(registerFrame[0x01].U16 ==  0b0100) // Run Jog Mode
 	{
 		set_jog_state = 1;
+		Jog_state_triger = 0;
 		Jog_oneloop_trigger = 0;
 		Jog_order = 0;
 
@@ -1552,6 +1560,7 @@ void Run_jog()
 		}
 
 		if(Jog_order == 5){
+			mode = 3;
 			Jog_state_triger = 1;
 			Jog_order = 0;
 		}
