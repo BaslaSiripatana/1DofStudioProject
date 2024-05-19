@@ -94,10 +94,14 @@ uint8_t check_up = 0;
 uint8_t check_down = 0;
 
 //mode control
-uint8_t mode = 4;
+uint8_t mode = 3;
+uint8_t mode_savestate = 3;
+uint64_t start_IT = 0;
 
 //PWM
 float Vin = 0;
+float Vin_old = 0;
+float Vin_force = 0;
 float duty_cycle = 50;
 
 //--------------Trajectory-------------------//
@@ -133,9 +137,11 @@ uint8_t B_up = 0;
 uint8_t B_down = 0;
 uint8_t B_reset = 0;
 uint8_t B_save = 0;
+uint8_t emergency_reset = 0;
 
 uint8_t count_save = 0;
 float shelves_pos[6] = {0};
+float last_shelf_save = 0;
 //-------------------------------------------//
 
 //PID
@@ -148,6 +154,8 @@ float max_velo = 0;
 //Sensor
 int S_top = 0;
 int S_down = 0;
+int S_top_savestate = 0;
+int S_down_savestate = 0;
 
 int check_state_B= 0;
 //------------------MODBUS-----------------------//
@@ -183,6 +191,15 @@ int Jog_state_triger = 0;
 int Jog_order = 0;
 int Jog_oneloop_trigger = 0;
 //---------------------------------------------//
+// Noise filter
+uint64_t timestamp_savestate = 0;
+int64_t prev_vac_savestate = 0;
+int64_t prev_grp_savestate = 0;
+uint8_t trigger_savestate = 0;
+int check_noise = 0;
+int64_t currentTime = 0;
+
+//uint8_t test_Gripper = 0;
 
 /* USER CODE END PV */
 
@@ -287,15 +304,15 @@ int main(void)
   HAL_TIM_Base_Start(&htim4);
 
   //PID Control Position
-  PID1.Kp = 7.5; // 7.5
-  PID1.Ki = 0.00005; // 0.0025
-  PID1.Kd = 3; // 3
+  PID1.Kp = 0; // 7.5
+  PID1.Ki = 0; // 0.0025
+  PID1.Kd = 0; // 3
   arm_pid_init_f32(&PID1, 0);
 
   //PID Control Velocity
-  PID2.Kp = 0.1; //0.5
-  PID2.Ki = 0.0006; // 0.006
-  PID2.Kd = 0.025; // 0.05
+  PID2.Kp = 0.003; //0.5
+  PID2.Ki = 0.019; // 0.006
+  PID2.Kd = 0.07; // 0.05
   arm_pid_init_f32(&PID2, 0);
 
   //Modbus Setting
@@ -309,6 +326,8 @@ int main(void)
   hmodbus.RegisterSize =200;
   Modbus_init(&hmodbus, registerFrame);
 
+  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_10, 1);
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -320,18 +339,18 @@ int main(void)
     /* USER CODE BEGIN 3 */
 
 	  //------Modbus Function------//
-//	  Modbus_Protocal_Worker();
-//	  check_vaccum_status();
-//	  check_gripper_status();
-//	  set_shelf();
-//	  Pointmode();
-//	  Home();
+	  Modbus_Protocal_Worker();
+	  check_vaccum_status();
+	  check_gripper_status();
+	  set_shelf();
+	  Pointmode();
+	  Home();
 //	  Run_jog();
 
 	  static uint64_t timestamp = 0;
 	  static uint64_t timestamp2 = 0;
 
-	  int64_t currentTime = micros();
+	  currentTime = micros();
 	  if (max_velo < QEIdata.linearVel)
 	  {
 		  max_velo = QEIdata.linearVel;
@@ -350,20 +369,25 @@ int main(void)
 
 		  if(mode == 1){
 			  LED_Auto();
-			  if(fabs(setPosition - QEIdata.linearPos) < 0.1){
+			  if(fabs(setPosition - QEIdata.linearPos) <= 5 || setPosition == 0){
 				  Vin = 0;
+//				  if (setPosition != 0)
+//				  {
+//					  mode = 3;
+//				  }
+
 			  }
-			  else if(setPosition - QEIdata.linearPos < 3 && setPosition - QEIdata.linearPos > 0.1){
-				  Vin = 3.2;
-				  check = 1;
-			  }
-			  else if(setPosition - QEIdata.linearPos > -3 && setPosition - QEIdata.linearPos < -0.1){
-			  	  Vin = -2;
-			  	  check = -1;
-			  }
+//			  else if(setPosition - QEIdata.linearPos <= 5 && setPosition - QEIdata.linearPos > 0.1){
+//				  Vin = 2.5;
+//				  check = 1;
+//			  }
+//			  else if(setPosition - QEIdata.linearPos >= -5 && setPosition - QEIdata.linearPos < -0.1){
+//			  	  Vin = -1.35;
+//			  	  check = -1;
+//			  }
 			  else{
-				  Vin = arm_pid_f32(&PID2, (setVelocity + ref_v)/2 - QEIdata.linearVel);
-//				  Vin = arm_pid_f32(&PID2, ref_v - QEIdata.linearVel);
+				  //Vin = arm_pid_f32(&PID2, (setVelocity + ref_v)/2 - QEIdata.linearVel);
+				  Vin = arm_pid_f32(&PID2, ref_v - QEIdata.linearVel);
 			  }
 			  if(Vin > 24){
 	  			  Vin = 24;
@@ -380,15 +404,27 @@ int main(void)
 			  button_save_position();
 		  }
 		  else if(mode == 3){ //stop mode
-			  Vin = -2.5;
+			  Vin = Vin_force;
 		  }
 		  else if(mode == 4){ //Emergency mode
 			  Vin = 0;
 			  LED_Emergency();
+
+			  if(HAL_GPIO_ReadPin(GPIOD, GPIO_PIN_2) == 1){
+				  mode = 2;
+				  emergency_reset = 1;
+			  }
 		  }
 
-		  //software limit
-		  SoftwareLimit();
+		  if(mode == 1){
+			  if(QEIdata.linearPos < -0.5 || QEIdata.linearPos > 450){
+				  Vin = 0;
+			  }
+		  }
+		  else{
+			  //software limit
+			  SoftwareLimit();
+		  }
 
 		  //Drive Motor which PWM
 		  DriveMotor();
@@ -400,21 +436,25 @@ int main(void)
 
 		  //control mode
 		  if(mode == 1){ //auto
-			  if(fabs(setPosition - QEIdata.linearPos) < 0.1){
-				  //Vin = 0;
+			  if(fabs(setPosition - QEIdata.linearPos) <= 5 || setPosition == 0){
+				  Vin = 0;
+//				  if (setPosition != 0)
+//				  {
+//					  mode = 3;
+//				  }
 			  }
-			  else if(setPosition - QEIdata.linearPos < 3 && setPosition - QEIdata.linearPos > 0.1){
-			  	  //Vin = 3.2;
-			  	  //check = 2;
-			  }
-			  else if(setPosition - QEIdata.linearPos > -3 && setPosition - QEIdata.linearPos < -0.1){
-			  	  //Vin = -2;
-			  	  //check = -2;
-			  }
+//			  else if(setPosition - QEIdata.linearPos <= 5 && setPosition - QEIdata.linearPos > 0.1){
+//				  Vin = 2.575;
+//				  check = 1;
+//			  }
+//			  else if(setPosition - QEIdata.linearPos >= -5 && setPosition - QEIdata.linearPos < -0.1){
+//				  Vin = -1.5;
+//				  check = -1;
+//			  }
 			  else{
-				  setVelocity = arm_pid_f32(&PID1, (setPosition + ref_p)/2 - QEIdata.linearPos);
-				  Vin = arm_pid_f32(&PID2, (setVelocity + ref_v)/2 + QEIdata.linearVel);
-//				  Vin = arm_pid_f32(&PID2, ref_v - QEIdata.linearVel);
+				  //setVelocity = arm_pid_f32(&PID1, (setPosition + ref_p)/2 - QEIdata.linearPos);
+				  //Vin = arm_pid_f32(&PID2, (setVelocity + ref_v)/2 + QEIdata.linearVel);
+				  Vin = arm_pid_f32(&PID2, ref_v - QEIdata.linearVel);
 			  }
 
 			  if(Vin > 24){
@@ -424,13 +464,22 @@ int main(void)
 				  Vin = -24;
 			  }
 
-			  //software limit
-			  SoftwareLimit();
+			  if(QEIdata.linearPos < -0.5 || QEIdata.linearPos > 450){
+			 	  Vin = 0;
+			  }
 
 			  //Drive Motor which PWM
 			  DriveMotor();
 		  }
 
+	  }
+
+	  if((currentTime > timestamp_savestate)&& (trigger_savestate == 1)){
+		   S_top = S_top_savestate;
+		   S_down = S_down_savestate;
+		   mode = mode_savestate;
+		   trigger_savestate = 0;
+		   check_noise += 1;
 	  }
 
 	  //Check Emergency Status
@@ -594,7 +643,7 @@ static void MX_TIM2_Init(void)
   sConfig.IC1Polarity = TIM_ICPOLARITY_RISING;
   sConfig.IC1Selection = TIM_ICSELECTION_DIRECTTI;
   sConfig.IC1Prescaler = TIM_ICPSC_DIV1;
-  sConfig.IC1Filter = 0;
+  sConfig.IC1Filter = 2;
   sConfig.IC2Polarity = TIM_ICPOLARITY_RISING;
   sConfig.IC2Selection = TIM_ICSELECTION_DIRECTTI;
   sConfig.IC2Prescaler = TIM_ICPSC_DIV1;
@@ -929,7 +978,8 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOD_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_14|GPIO_PIN_4|GPIO_PIN_5|GPIO_PIN_7, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_14|GPIO_PIN_1|GPIO_PIN_4|GPIO_PIN_5
+                          |GPIO_PIN_7|GPIO_PIN_8, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOA, LD2_Pin|GPIO_PIN_6|GPIO_PIN_7|GPIO_PIN_8, GPIO_PIN_RESET);
@@ -943,8 +993,10 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : PC14 PC4 PC5 PC7 */
-  GPIO_InitStruct.Pin = GPIO_PIN_14|GPIO_PIN_4|GPIO_PIN_5|GPIO_PIN_7;
+  /*Configure GPIO pins : PC14 PC1 PC4 PC5
+                           PC7 PC8 */
+  GPIO_InitStruct.Pin = GPIO_PIN_14|GPIO_PIN_1|GPIO_PIN_4|GPIO_PIN_5
+                          |GPIO_PIN_7|GPIO_PIN_8;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
@@ -1017,7 +1069,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
 	if(htim == &htim5)
 	{
-		_micros += UINT32_MAX;
+		_micros += 1;
 	}
 //	 Check which version of the timer triggered this callback and toggle LED
 	if (htim == &htim6)
@@ -1030,7 +1082,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 
 uint64_t micros()
 {
-	return __HAL_TIM_GET_COUNTER(&htim5)+_micros;
+	return __HAL_TIM_GET_COUNTER(&htim5)+((_micros - 1) * 2,147,483,647);
 }
 
 void QEIEncoderPosVel_Update()
@@ -1088,21 +1140,35 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 //			HAL_GPIO_WritePin(GPIOA, GPIO_PIN_6, 0);
 //		}
 //	}
+
 	if(GPIO_Pin == GPIO_PIN_8){ //check top sensor
-		S_top = 1;
+		if (start_IT > 11 )
+		{
+			S_top = 1;
+		}
+
 		//Vin = -2;
 //		DriveMotor();
 	}
 	if(GPIO_Pin == GPIO_PIN_9){ //check down sensor
-		S_down = 1;
+
+		if (start_IT > 11)
+		{
+			S_down = 1;
+		}
 		//Vin = 2;
 //		DriveMotor();
 	}
-	if(GPIO_Pin == GPIO_PIN_10){ //check emergency
-		mode = 4; //Emergency mode
-		Vin = 0;
-		__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1, 0);
-	}
+//	if(GPIO_Pin == GPIO_PIN_10){ //check emergency
+//
+//		if (start_IT > 11)
+//		{
+//			mode = 4; //Emergency mode
+//			Vin = 0;
+//			__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1, 0);
+//		}
+//	}
+	start_IT += 1;
 }
 
 //-----------------------------------Trajectory------------------------------------------//
@@ -1187,6 +1253,16 @@ void createTrajectory(){
 //--------------------------Drive Motor----------------//
 
 void DriveMotor(){
+
+	//if((Vin_old < 0.3 && Vin_old>-0.3) && (Vin >= 0.3 || Vin_old <= -0.3))
+//	if(Vin_old == 0 && Vin !=0 )
+//	{
+//		trigger_savestate = 1;
+//		S_top_savestate = S_top;
+//		S_down_savestate = S_down;
+//		mode_savestate = mode;
+//		timestamp_savestate = micros() + 50000;
+//	}
 	//PWM Motor
 	duty_cycle = (fabs(Vin)*100)/24;
 	__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1, duty_cycle*9.99);
@@ -1198,6 +1274,7 @@ void DriveMotor(){
 	else{
 		HAL_GPIO_WritePin(GPIOC, GPIO_PIN_5, 0);
 	}
+//	Vin_old = Vin;
 }
 
 void SoftwareLimit(){
@@ -1244,7 +1321,7 @@ void button_up_down_input(){
 		check_state_B = 2;
 	}
 	if(QEIdata.linearPos < set_manual_point && check_up == 1){
-		Vin = 4.5;
+		Vin = 4;
 		check_state_B = 3;
 	}
 	else{
@@ -1264,7 +1341,7 @@ void button_up_down_input(){
 		check_state_B = 6;
 	}
 	if(QEIdata.linearPos > set_manual_point && check_down == 1){
-		Vin = -3.5;
+		Vin = -3;
 		check_state_B = 7;
 	}
 	else{
@@ -1279,9 +1356,10 @@ void button_up_down_input(){
 
 void button_reset_input(){
 	//check button reset
-	if(HAL_GPIO_ReadPin(GPIOD, GPIO_PIN_2) == 1 || (Home_state_triger == 0 && set_Home_state == 1)){
+	if(HAL_GPIO_ReadPin(GPIOD, GPIO_PIN_2) == 1 || (Home_state_triger == 0 && set_Home_state == 1) || emergency_reset == 1){
 		B_reset = 1;
 		while(HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_9) == 0){
+			Modbus_Protocal_Worker();
 			Vin = -3.5;
 			//software limit
 			SoftwareLimit();
@@ -1290,12 +1368,13 @@ void button_reset_input(){
 		}
 
 		Vin = 2.1;
-		SoftwareLimit();
 		DriveMotor();
-		HAL_Delay(500);
+		HAL_Delay(1000);
+		SoftwareLimit();
 
 		while(HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_9) == 0){
-			Vin = -2;
+			Modbus_Protocal_Worker();
+			Vin = -1.3;
 			//software limit
 			SoftwareLimit();
 			//Drive Motor which PWM
@@ -1308,6 +1387,11 @@ void button_reset_input(){
 			Home_state_triger = 1;
 			B_reset = 0;
 		}
+
+		if(emergency_reset == 1){
+			emergency_reset = 0;
+
+		}
 	}
 	else{
 		B_reset = 0;
@@ -1315,10 +1399,11 @@ void button_reset_input(){
 }
 
 void button_save_position(){
-	if(HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_7) == 1 && B_save == 0){
+	if(HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_7) == 1 && B_save == 0 && fabs(QEIdata.linearPos-last_shelf_save) > 20){
 		B_save = 1;
 		count_save += 1;
 		shelves_pos[count_save] = QEIdata.linearPos;
+		last_shelf_save =  QEIdata.linearPos;
 	}
 	else{
 		B_save = 0;
@@ -1349,7 +1434,7 @@ void Routine(){
 			registerFrame[0x04].U16 = 0b0010;
 		}
 		registerFrame[0x10].U16 = Moving_status;
-		registerFrame[0x11].U16 = QEIdata.linearPos;
+		registerFrame[0x11].U16 = QEIdata.linearPos*10;
 		registerFrame[0x12].U16 = QEIdata.linearVel;
 		registerFrame[0x13].U16 = QEIdata.linearAcc;
 		registerFrame[0x40].U16 = x_position;
@@ -1359,31 +1444,75 @@ void check_vaccum_status()
 {
 	check_state = 1;
 	if(registerFrame[0x02].U16 == 0b0000){ // not suck  in
+
 		vaccum_status = 0;
-		HAL_GPIO_WritePin(GPIOB, GPIO_PIN_10, 0);
+		if (prev_vac_savestate != vaccum_status)
+			{
+				trigger_savestate = 1;
+				S_top_savestate = S_top;
+				S_down_savestate = S_down;
+				mode_savestate = mode;
+				timestamp_savestate = micros() + 500000;
+			}
+		HAL_Delay(50);
+		HAL_GPIO_WritePin(GPIOB, GPIO_PIN_10, 1);
 	}
 	if(registerFrame[0x02].U16 == 0b0001){ //suck  in
 		vaccum_status = 1;
-		HAL_GPIO_WritePin(GPIOB, GPIO_PIN_10, 1);
+		if (prev_vac_savestate != vaccum_status)
+			{
+				trigger_savestate = 1;
+				S_top_savestate = S_top;
+				S_down_savestate = S_down;
+				mode_savestate = mode;
+				timestamp_savestate = micros() + 500000;
+			}
+		HAL_GPIO_WritePin(GPIOB, GPIO_PIN_10, 0);
 	}
+
+	prev_vac_savestate = vaccum_status;
 }
 
 void check_gripper_status()
 {
 	check_state = 2;
-	if(registerFrame[0x03].U16 == 0b0000) //backward ,not on
-	{
-		gripper_status = 0;
-		HAL_GPIO_WritePin(GPIOB, GPIO_PIN_8, 0);
-		HAL_GPIO_WritePin(GPIOC, GPIO_PIN_14, 1);
 
+	if(registerFrame[0x03].U16 == 0b0000) //backward ,not on
+	//if(test_Gripper == 0)
+	{
+
+		gripper_status = 0;
+
+		if (prev_grp_savestate != gripper_status)
+			{
+					trigger_savestate = 1;
+					S_top_savestate = S_top;
+					S_down_savestate = S_down;
+					mode_savestate = mode;
+					timestamp_savestate = micros() + 500000;
+			}
+		HAL_GPIO_WritePin(GPIOA, GPIO_PIN_8, 0);
+		HAL_GPIO_WritePin(GPIOC, GPIO_PIN_8, 1);
 	}
 	if(registerFrame[0x03].U16 == 0b0001) //Forward
+	//if(test_Gripper == 1)
 	{
 		gripper_status = 1;
-		HAL_GPIO_WritePin(GPIOB, GPIO_PIN_8, 1);
-		HAL_GPIO_WritePin(GPIOC, GPIO_PIN_14, 0);
+
+		if (prev_grp_savestate != gripper_status)
+			{
+					trigger_savestate = 1;
+					S_top_savestate = S_top;
+					S_down_savestate = S_down;
+					mode_savestate = mode;
+					timestamp_savestate = micros() + 500000;
+			}
+
+		HAL_GPIO_WritePin(GPIOA, GPIO_PIN_8, 1);
+		HAL_GPIO_WritePin(GPIOC, GPIO_PIN_8, 0);
 	}
+
+	prev_grp_savestate = gripper_status;
 }
 
 void set_shelf()
@@ -1409,11 +1538,11 @@ void set_shelf()
 	if (set_shelf_state == 1 && Enter_click == 1)
 	{
 		registerFrame[0x01].U16 = 0b0000;
-		registerFrame[0x23].U16 = shelves_pos[1];
-		registerFrame[0x24].U16 = shelves_pos[2];
-		registerFrame[0x25].U16 = shelves_pos[3];
-		registerFrame[0x26].U16 = shelves_pos[4];
-		registerFrame[0x27].U16 = shelves_pos[5];
+		registerFrame[0x23].U16 = shelves_pos[1]*10;
+		registerFrame[0x24].U16 = shelves_pos[2]*10;
+		registerFrame[0x25].U16 = shelves_pos[3]*10;
+		registerFrame[0x26].U16 = shelves_pos[4]*10;
+		registerFrame[0x27].U16 = shelves_pos[5]*10;
 		Moving_status = 0;
 		registerFrame[0x10].U16 = Moving_status;
 		set_shelf_state = 0;
@@ -1431,6 +1560,7 @@ void Pointmode()
 			 set_point_modbus = (registerFrame[0x30].U16) / 10;
 			 registerFrame[0x01].U16 = 0b0000;
 			 LED_Auto();
+//			 Modbus_Protocal_Worker();
 		}
 
 	if (point_state_triger == 0 && set_point_state == 1)
@@ -1439,18 +1569,22 @@ void Pointmode()
 				registerFrame[0x10].U16 = Moving_status;
 				mode = 1;
 				setPosition = set_point_modbus;
-				if(fabs(setPosition-QEIdata.linearPos) < 0.05){
+				if(fabs(setPosition-QEIdata.linearPos) <= 5){
 					mode = 3;
 					point_state_triger = 1;
 				}
+				Modbus_Protocal_Worker();
 		}
 	if (point_state_triger == 1 && set_point_state == 1)
 		{
+			mode = 3;
 			Moving_status = 0;
 			registerFrame[0x10].U16 = Moving_status;
 			set_point_state = 0;
 			point_state_triger = 0;
+			Modbus_Protocal_Worker();
 			LED_Ready();
+//
 		}
 }
 void Home()
@@ -1460,6 +1594,7 @@ void Home()
 		set_Home_state = 1;
 		registerFrame[0x01].U16 = 0b0000;
 		LED_Homing();
+//		Modbus_Protocal_Worker();
 	}
 	if(Home_state_triger == 0 && set_Home_state == 1)
 	{
@@ -1467,6 +1602,7 @@ void Home()
 		registerFrame[0x10].U16 = Moving_status;
 		//set home
 		mode = 2;
+//		Modbus_Protocal_Worker();
 	}
 	if(Home_state_triger == 1 && set_Home_state == 1)
 	{
@@ -1475,6 +1611,7 @@ void Home()
 		registerFrame[0x10].U16 = Moving_status;
 		set_Home_state = 0;
 		Home_state_triger = 0;
+//		Modbus_Protocal_Worker();
 		LED_Ready();
 	}
 }
@@ -1523,14 +1660,14 @@ void Run_jog()
 
 					//pick
 					HAL_GPIO_WritePin(GPIOB, GPIO_PIN_8, 0);
-					HAL_GPIO_WritePin(GPIOC, GPIO_PIN_14, 1);
+					HAL_GPIO_WritePin(GPIOC, GPIO_PIN_8, 1);
 					HAL_Delay(500);
 
 					HAL_GPIO_WritePin(GPIOB, GPIO_PIN_10, 1);
 					HAL_Delay(500);
 
 					HAL_GPIO_WritePin(GPIOB, GPIO_PIN_8, 1);
-					HAL_GPIO_WritePin(GPIOC, GPIO_PIN_14, 0);
+					HAL_GPIO_WritePin(GPIOC, GPIO_PIN_8, 0);
 					HAL_Delay(500);
 
 					Jog_oneloop_trigger = 1;
