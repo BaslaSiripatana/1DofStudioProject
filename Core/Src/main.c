@@ -23,6 +23,7 @@
 /* USER CODE BEGIN Includes */
 #include "arm_math.h"
 #include "ModBusRTU.h"
+#include "kalman_filter.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -49,6 +50,7 @@ TIM_HandleTypeDef htim3;
 TIM_HandleTypeDef htim4;
 TIM_HandleTypeDef htim5;
 TIM_HandleTypeDef htim6;
+TIM_HandleTypeDef htim15;
 TIM_HandleTypeDef htim16;
 
 UART_HandleTypeDef huart2;
@@ -94,8 +96,8 @@ uint8_t check_up = 0;
 uint8_t check_down = 0;
 
 //mode control
-uint8_t mode = 3;
-uint8_t mode_savestate = 3;
+uint8_t mode = 4;
+uint8_t mode_savestate = 4;
 uint64_t start_IT = 0;
 
 //PWM
@@ -199,7 +201,31 @@ uint8_t trigger_savestate = 0;
 int check_noise = 0;
 int64_t currentTime = 0;
 
-//uint8_t test_Gripper = 0;
+//-----------------Kalman_filter----------------//
+// Define matrix data for Kalman filter
+float32_t dt = 0.001; // 1,000 Hz
+float32_t A_data[9] = {1, 0.001, 0.0000005, 0, 1, 0.001, 0, 0, 1};
+float32_t B_data[3] = {0, 0, 0};
+float32_t C_data[3] = {1, 0, 0};
+float32_t G_data[3] = {0.0000001667, 0.0000005, 0.001};
+float32_t Q_data[1] = {1}; //3
+float32_t R_data[1] = {9}; //7
+float32_t P_data[9] = {1, 0, 0, 0, 1, 0, 0, 0, 1};
+float32_t x_data[3] = {0, 0, 0};
+float32_t K_data[3]; // Kalman gain data
+float32_t S_data[1]; // Innovation covariance data
+float32_t temp1_data[9], temp2_data[9], temp3_data[3], temp4_data[1], temp5_data[3], temp6_data[9];
+
+float32_t estimated_state[3];
+
+// Create Kalman filter instance
+KalmanFilter kf;
+
+// Define control input and process noise
+float32_t u_data[1] = {0};
+float32_t w_data[1] = {0.207}; // Example noise, should be random in practice
+
+int count_check = 0;
 
 /* USER CODE END PV */
 
@@ -215,6 +241,7 @@ static void MX_TIM4_Init(void);
 static void MX_TIM6_Init(void);
 static void MX_TIM16_Init(void);
 static void MX_USART2_UART_Init(void);
+static void MX_TIM15_Init(void);
 /* USER CODE BEGIN PFP */
 uint64_t micros();
 void QEIEncoderPosVel_Update();
@@ -286,12 +313,13 @@ int main(void)
   MX_TIM6_Init();
   MX_TIM16_Init();
   MX_USART2_UART_Init();
+  MX_TIM15_Init();
   /* USER CODE BEGIN 2 */
 
   //PWM Motor
   HAL_TIM_Base_Start(&htim3);
   HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_1);
-  __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1, 500);
+  __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1, 0);
 
   //Read Encoder
   HAL_TIM_Encoder_Start(&htim2,TIM_CHANNEL_ALL);
@@ -304,15 +332,18 @@ int main(void)
   HAL_TIM_Base_Start(&htim4);
 
   //PID Control Position
-  PID1.Kp = 0; // 7.5
-  PID1.Ki = 0; // 0.0025
+//  PID1.Kp = 0.05; // 7.5
+//  PID1.Ki = 0.0005; // 0.0025
+//  PID1.Kd = 0.1; // 3
+  PID1.Kp = 3; // 7.5
+  PID1.Ki = 0.0001; // 0.0025
   PID1.Kd = 0; // 3
   arm_pid_init_f32(&PID1, 0);
 
   //PID Control Velocity
-  PID2.Kp = 0.003; //0.5
-  PID2.Ki = 0.019; // 0.006
-  PID2.Kd = 0.07; // 0.05
+  PID2.Kp = 0.3; //0.5
+  PID2.Ki = 0.0005; // 0.006
+  PID2.Kd = 0; // 0.05
   arm_pid_init_f32(&PID2, 0);
 
   //Modbus Setting
@@ -328,6 +359,14 @@ int main(void)
 
   HAL_GPIO_WritePin(GPIOB, GPIO_PIN_10, 1);
 
+
+  //-----Kalman filter--------//
+  // Initialize the Kalman filter
+  KalmanFilter_Init(&kf, A_data, B_data, C_data, G_data, Q_data, R_data, P_data, x_data, K_data, temp1_data, temp2_data, temp3_data, temp4_data, temp5_data, temp6_data, S_data);
+
+  // Update Kalman every 0.001 s (1,000 Hz)
+  HAL_TIM_Base_Start_IT(&htim15);
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -337,6 +376,7 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+	  count_check += 1;
 
 	  //------Modbus Function------//
 	  Modbus_Protocal_Worker();
@@ -369,7 +409,7 @@ int main(void)
 
 		  if(mode == 1){
 			  LED_Auto();
-			  if(fabs(setPosition - QEIdata.linearPos) <= 5 || setPosition == 0){
+			  if(fabs(setPosition - QEIdata.linearPos) <= 0.1 || setPosition == 0){
 				  Vin = 0;
 //				  if (setPosition != 0)
 //				  {
@@ -386,8 +426,8 @@ int main(void)
 //			  	  check = -1;
 //			  }
 			  else{
-				  //Vin = arm_pid_f32(&PID2, (setVelocity + ref_v)/2 - QEIdata.linearVel);
-				  Vin = arm_pid_f32(&PID2, ref_v - QEIdata.linearVel);
+				  Vin = arm_pid_f32(&PID2, (setVelocity + ref_v)/2 - QEIdata.linearVel);
+				  //Vin = arm_pid_f32(&PID2, ref_v - QEIdata.linearVel);
 			  }
 			  if(Vin > 24){
 	  			  Vin = 24;
@@ -405,6 +445,10 @@ int main(void)
 		  }
 		  else if(mode == 3){ //stop mode
 			  Vin = Vin_force;
+
+//			  if(QEIdata.linearPos >= 40){
+//				  Vin = 0;
+//			  }
 		  }
 		  else if(mode == 4){ //Emergency mode
 			  Vin = 0;
@@ -436,7 +480,7 @@ int main(void)
 
 		  //control mode
 		  if(mode == 1){ //auto
-			  if(fabs(setPosition - QEIdata.linearPos) <= 5 || setPosition == 0){
+			  if(fabs(setPosition - QEIdata.linearPos) <= 0.2 || setPosition == 0){
 				  Vin = 0;
 //				  if (setPosition != 0)
 //				  {
@@ -452,9 +496,9 @@ int main(void)
 //				  check = -1;
 //			  }
 			  else{
-				  //setVelocity = arm_pid_f32(&PID1, (setPosition + ref_p)/2 - QEIdata.linearPos);
-				  //Vin = arm_pid_f32(&PID2, (setVelocity + ref_v)/2 + QEIdata.linearVel);
-				  Vin = arm_pid_f32(&PID2, ref_v - QEIdata.linearVel);
+				  setVelocity = arm_pid_f32(&PID1, (setPosition + ref_p)/2 - QEIdata.linearPos);
+				  Vin = arm_pid_f32(&PID2, (setVelocity + ref_v)/2 + QEIdata.linearVel);
+				  //Vin = arm_pid_f32(&PID2, ref_v - QEIdata.linearVel);
 			  }
 
 			  if(Vin > 24){
@@ -852,6 +896,52 @@ static void MX_TIM6_Init(void)
 }
 
 /**
+  * @brief TIM15 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM15_Init(void)
+{
+
+  /* USER CODE BEGIN TIM15_Init 0 */
+
+  /* USER CODE END TIM15_Init 0 */
+
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+
+  /* USER CODE BEGIN TIM15_Init 1 */
+
+  /* USER CODE END TIM15_Init 1 */
+  htim15.Instance = TIM15;
+  htim15.Init.Prescaler = 169;
+  htim15.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim15.Init.Period = 999;
+  htim15.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim15.Init.RepetitionCounter = 0;
+  htim15.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim15) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim15, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim15, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM15_Init 2 */
+
+  /* USER CODE END TIM15_Init 2 */
+
+}
+
+/**
   * @brief TIM16 Initialization Function
   * @param None
   * @retval None
@@ -1072,11 +1162,29 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 		_micros += 1;
 	}
 //	 Check which version of the timer triggered this callback and toggle LED
-	if (htim == &htim6)
+	if(htim == &htim6)
 	{
 	    //check2 +=1;
 		Heartbeat();
 		Routine();
+	}
+	//timer IT update Kalman filter
+	if(htim == &htim15)
+	{
+		// Read sensor data or get measurements
+		float32_t y_data[1] = {QEIdata.linearPos};
+
+		// Prediction step
+		KalmanFilter_Predict(&kf, u_data, w_data);
+
+		// Update step
+		KalmanFilter_Update(&kf, y_data);
+
+		// Use the updated state estimate (kf.x) as needed
+		estimated_state[0] = kf.x.pData[0]; // Position
+		estimated_state[1] = kf.x.pData[1]; // Velocity
+		estimated_state[2] = kf.x.pData[2]; // Acceleration
+
 	}
 }
 
@@ -1147,8 +1255,6 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 			S_top = 1;
 		}
 
-		//Vin = -2;
-//		DriveMotor();
 	}
 	if(GPIO_Pin == GPIO_PIN_9){ //check down sensor
 
@@ -1156,8 +1262,6 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 		{
 			S_down = 1;
 		}
-		//Vin = 2;
-//		DriveMotor();
 	}
 //	if(GPIO_Pin == GPIO_PIN_10){ //check emergency
 //
@@ -1374,13 +1478,14 @@ void button_reset_input(){
 
 		while(HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_9) == 0){
 			Modbus_Protocal_Worker();
-			Vin = -1.3;
+			Vin = -1.4;
 			//software limit
 			SoftwareLimit();
 			//Drive Motor which PWM
 			DriveMotor();
 		}
 		Vin = 0;
+		HAL_Delay(500);
 		__HAL_TIM_SET_COUNTER(&htim2, 0); //set position to 0
 
 		if(Home_state_triger == 0 && set_Home_state == 1){
