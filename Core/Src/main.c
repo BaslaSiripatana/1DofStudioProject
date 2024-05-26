@@ -238,6 +238,10 @@ int check_LED = 0;
 float overshootTop = 0;
 float overshootDown = 600;
 
+//Emer
+uint8_t Emer_count = 0;
+uint64_t Emer_timestamp = 0;
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -345,15 +349,17 @@ int main(void)
   HAL_TIM_Base_Start(&htim4);
 
   //PID Control Position
-  PID1.Kp = 3; // 7.5
-  PID1.Ki = 0.00025; // 0.0025
-  PID1.Kd = 0.005; // 3
+  PID1.Kp = 3.75; // 7.5
+  PID1.Ki = 0; // 0.0025
+  PID1.Kd = 0;
+//  PID1.Ki = 0.000025; // 0.0025
+//  PID1.Kd = 0.005; // 3
   arm_pid_init_f32(&PID1, 0);
 
   //PID Control Velocity
-  PID2.Kp = 0.3; //0.5
-  PID2.Ki = 0.0005; // 0.006
-  PID2.Kd = 0; // 0.05
+  PID2.Kp = 0.1; //0.3
+  PID2.Ki = 0.0005; // 0.0005
+  PID2.Kd = 0; // 0
   arm_pid_init_f32(&PID2, 0);
 
   //Modbus Setting
@@ -455,7 +461,7 @@ int main(void)
 //			  }
 			  else{
 				  Vin = arm_pid_f32(&PID2, (setVelocity + ref_v)/2 - QEIdata.linearVel);
-				  //Vin = arm_pid_f32(&PID2, ref_v - QEIdata.linearVel);
+//				  Vin = arm_pid_f32(&PID2, ref_v - QEIdata.linearVel);
 			  }
 			  if(Vin > 24){
 	  			  Vin = 24;
@@ -528,7 +534,7 @@ int main(void)
 			  else{
 				  setVelocity = arm_pid_f32(&PID1, (setPosition + ref_p)/2 - QEIdata.linearPos);
 				  Vin = arm_pid_f32(&PID2, (setVelocity + ref_v)/2 + QEIdata.linearVel);
-				  //Vin = arm_pid_f32(&PID2, ref_v - QEIdata.linearVel);
+//				  Vin = arm_pid_f32(&PID2, ref_v - QEIdata.linearVel);
 			  }
 
 			  if(Vin > 24){
@@ -557,6 +563,7 @@ int main(void)
 //	  }
 
 	  //Check Emergency Status
+
 	  checkEmer();
 
 	  if(currentTime > timestamp3){
@@ -1115,7 +1122,7 @@ static void MX_GPIO_Init(void)
                           |GPIO_PIN_9|GPIO_PIN_11, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_10|GPIO_PIN_6, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_0|GPIO_PIN_10|GPIO_PIN_6, GPIO_PIN_RESET);
 
   /*Configure GPIO pin : PC13 */
   GPIO_InitStruct.Pin = GPIO_PIN_13;
@@ -1148,8 +1155,8 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : PB10 PB6 */
-  GPIO_InitStruct.Pin = GPIO_PIN_10|GPIO_PIN_6;
+  /*Configure GPIO pins : PB0 PB10 PB6 */
+  GPIO_InitStruct.Pin = GPIO_PIN_0|GPIO_PIN_10|GPIO_PIN_6;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
@@ -1434,10 +1441,12 @@ void DriveMotor(){
 
 	//Control Motor Direction
 	if(Vin < 0){
-		HAL_GPIO_WritePin(GPIOC, GPIO_PIN_5, 1);
+		//HAL_GPIO_WritePin(GPIOC, GPIO_PIN_5, 1);
+		HAL_GPIO_WritePin(GPIOB, GPIO_PIN_0, 1);
 	}
 	else{
-		HAL_GPIO_WritePin(GPIOC, GPIO_PIN_5, 0);
+		//HAL_GPIO_WritePin(GPIOC, GPIO_PIN_5, 0);
+		HAL_GPIO_WritePin(GPIOB, GPIO_PIN_0, 0);
 	}
 //	Vin_old = Vin;
 }
@@ -1471,12 +1480,12 @@ void JoystickInput(){
 
 	//Control x-axis by joy
 //	x_position += ((ADCBuffer[0]-2048)*0.005);
-	if (ADCBuffer[0]>=2100)
+	if (ADCBuffer[1]>=2600)
 	{
 		temp_x = (float)(ADCBuffer[0]);
 		x_position += (temp_x/4096)*0.05;
 	}
-	else if (ADCBuffer[0] <= 1800)
+	else if (ADCBuffer[1] <= 1800)
 	{
 
 		temp_x = (float)(ADCBuffer[0]);
@@ -1536,28 +1545,32 @@ void button_reset_input(){
 	//check button reset
 	if(HAL_GPIO_ReadPin(GPIOD, GPIO_PIN_2) == 1 || (Home_state_triger == 0 && set_Home_state == 1) || emergency_reset == 1){
 		B_reset = 1;
+		again:
 		S_top = 0;
 		S_down = 0;
 		while(HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_9) == 0){
 			Modbus_Protocal_Worker();
-//			Vin = -3.5;
-			Vin = -5;
+			Vin = -3.5;
+			//Vin = -5;
 			//software limit
 			//SoftwareLimit();
 			//Drive Motor which PWM
 			DriveMotor();
 		}
 
-//		Vin = 2.1;
-		Vin = 2.5;
+		Vin = 2.1;
+		//Vin = 2.5;
 		DriveMotor();
 		HAL_Delay(1000);
 		//SoftwareLimit();
 
 		while(HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_9) == 0){
+			if(HAL_GPIO_ReadPin(GPIOD, GPIO_PIN_2) == 1){
+				goto again;
+			}
 			Modbus_Protocal_Worker();
-			//Vin = -1.4;
-			Vin = -3;
+			Vin = -1.8;
+			//Vin = -3;
 			//software limit
 			//SoftwareLimit();
 			//Drive Motor which PWM
@@ -1652,7 +1665,8 @@ void check_vaccum_status()
 				timestamp_savestate = micros() + 500000;
 			}
 //		HAL_Delay(50);
-		HAL_GPIO_WritePin(GPIOA, GPIO_PIN_11, 1);
+		//HAL_GPIO_WritePin(GPIOA, GPIO_PIN_11, 1);
+		HAL_GPIO_WritePin(GPIOB, GPIO_PIN_10, 1);
 	}
 	if(registerFrame[0x02].U16 == 0b0001){ //suck  in
 		vaccum_status = 1;
@@ -1664,7 +1678,8 @@ void check_vaccum_status()
 				mode_savestate = mode;
 				timestamp_savestate = micros() + 500000;
 			}
-		HAL_GPIO_WritePin(GPIOA, GPIO_PIN_11, 0);
+		//HAL_GPIO_WritePin(GPIOA, GPIO_PIN_11, 0);
+		HAL_GPIO_WritePin(GPIOB, GPIO_PIN_10, 0);
 	}
 
 	prev_vac_savestate = vaccum_status;
@@ -1864,14 +1879,14 @@ void Run_jog()
 					//pick
 					HAL_GPIO_WritePin(GPIOA, GPIO_PIN_8, 0);
 					HAL_GPIO_WritePin(GPIOC, GPIO_PIN_8, 1);
-					HAL_Delay(1000);
+					HAL_Delay(750);
 
-					HAL_GPIO_WritePin(GPIOA, GPIO_PIN_11, 1);
-					HAL_Delay(1000);
+					HAL_GPIO_WritePin(GPIOB, GPIO_PIN_10, 1);
+					HAL_Delay(500);
 
 					HAL_GPIO_WritePin(GPIOA, GPIO_PIN_8, 1);
 					HAL_GPIO_WritePin(GPIOC, GPIO_PIN_8, 0);
-					HAL_Delay(1000);
+					HAL_Delay(750);
 
 					Jog_oneloop_trigger = 1;
 					setPosition = QEIdata.linearPos;
@@ -1892,14 +1907,14 @@ void Run_jog()
 					//place
 					HAL_GPIO_WritePin(GPIOA, GPIO_PIN_8, 0);
 					HAL_GPIO_WritePin(GPIOC, GPIO_PIN_8, 1);
-					HAL_Delay(1000);
+					HAL_Delay(750);
 
-					HAL_GPIO_WritePin(GPIOA, GPIO_PIN_11, 0);
-					HAL_Delay(1000);
+					HAL_GPIO_WritePin(GPIOB, GPIO_PIN_10, 0);
+					HAL_Delay(500);
 
 					HAL_GPIO_WritePin(GPIOA, GPIO_PIN_8, 1);
 					HAL_GPIO_WritePin(GPIOC, GPIO_PIN_8, 0);
-					HAL_Delay(1000);
+					HAL_Delay(750);
 
 					Jog_order += 1;
 					Jog_oneloop_trigger = 0;
@@ -1953,8 +1968,8 @@ void LED_Ready(){
 
 void LED_Auto(){
 	HAL_GPIO_WritePin(GPIOC, GPIO_PIN_2, 1);
-	HAL_GPIO_WritePin(GPIOA, GPIO_PIN_7, 1);
-	HAL_GPIO_WritePin(GPIOB, GPIO_PIN_6, 0);
+	HAL_GPIO_WritePin(GPIOA, GPIO_PIN_7, 0);
+	HAL_GPIO_WritePin(GPIOB, GPIO_PIN_6, 1);
 	HAL_GPIO_WritePin(GPIOC, GPIO_PIN_7, 1);
 	HAL_GPIO_WritePin(GPIOA, GPIO_PIN_9, 1);
 
@@ -1962,8 +1977,8 @@ void LED_Auto(){
 
 void LED_Manual(){
 	HAL_GPIO_WritePin(GPIOC, GPIO_PIN_2, 1);
-	HAL_GPIO_WritePin(GPIOA, GPIO_PIN_7, 0);
-	HAL_GPIO_WritePin(GPIOB, GPIO_PIN_6, 1);
+	HAL_GPIO_WritePin(GPIOA, GPIO_PIN_7, 1);
+	HAL_GPIO_WritePin(GPIOB, GPIO_PIN_6, 0);
 	HAL_GPIO_WritePin(GPIOC, GPIO_PIN_7, 1);
 	HAL_GPIO_WritePin(GPIOA, GPIO_PIN_9, 1);
 }
@@ -1971,17 +1986,25 @@ void LED_Manual(){
 void checkEmer(){
 	//Check Emergency Status
 	if(HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_10) == 1){
-		emerStatus = 1;
-		mode = 4;
-		Vin = 0;
-		__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1, 0);
-		LED_Emergency();
+		Emer_count += 1;
+		if(Emer_count == 1){
+			Emer_timestamp = micros() + 5000000;
+		}
+		else if(micros()>Emer_timestamp && HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_10) == 1){
+			emerStatus = 1;
+			mode = 4;
+			Vin = 0;
+			__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1, 0);
+			LED_Emergency();
+		}
 	}
 	while(emerStatus == 1){
-		if(HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_10) == 1){
+		Modbus_Protocal_Worker();
+		if(HAL_GPIO_ReadPin(GPIOD, GPIO_PIN_2) == 1){
 			 emergency_reset = 1;
 			 button_reset_input();
 			 emerStatus = 0;
+			 Emer_count = 0;
 		}
 	}
 }
