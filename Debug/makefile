@@ -75,8 +75,8 @@ all: main-build
 main-build: Studio_readRPM.elf secondary-outputs
 
 # Tool invocations
-Studio_readRPM.elf Studio_readRPM.map: $(OBJS) $(USER_OBJS) /Users/buzz/STM32CubeIDE/workspace_1.13.2/Studio_readRPM/STM32G474RETX_FLASH.ld makefile objects.list $(OPTIONAL_TOOL_DEPS)
-	arm-none-eabi-gcc -o "Studio_readRPM.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m4 -T"/Users/buzz/STM32CubeIDE/workspace_1.13.2/Studio_readRPM/STM32G474RETX_FLASH.ld" --specs=nosys.specs -Wl,-Map="Studio_readRPM.map" -Wl,--gc-sections -static --specs=nano.specs -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb -Wl,--start-group -lc -lm -Wl,--end-group
+Studio_readRPM.elf Studio_readRPM.map: $(OBJS) $(USER_OBJS) C:\Users\bcc35\Downloads\Base1_DOF\STM32G474RETX_FLASH.ld makefile objects.list $(OPTIONAL_TOOL_DEPS)
+	arm-none-eabi-gcc -o "Studio_readRPM.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m4 -T"C:\Users\bcc35\Downloads\Base1_DOF\STM32G474RETX_FLASH.ld" --specs=nosys.specs -Wl,-Map="Studio_readRPM.map" -Wl,--gc-sections -static --specs=nano.specs -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb -Wl,--start-group -lc -lm -Wl,--end-group
 	@echo 'Finished building target: $@'
 	@echo ' '
 
